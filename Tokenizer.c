@@ -1,5 +1,5 @@
-#include <stdio.h>
-#include <string.h>
+#include<stdio.h>
+#include<string.h>
 
 typedef struct{
     int row;
@@ -32,8 +32,15 @@ int isAlpha(char c){return (c>='a'&&c<='z')||(c>='A'&&c<='Z');}
 int isDigit(char c){return c>='0'&&c<='9';}
 int isAlnum(char c){return isAlpha(c)||isDigit(c);}
 
+int isDatatype(char *str){
+    char *dt[]={"int","float","double","char","void",NULL};
+    for(int i=0;dt[i];i++)
+        if(!strcmp(str,dt[i])) return 1;
+    return 0;
+}
+
 int isKeyword(char *str){
-    char *kw[]={"int","float","double","char","void",NULL};
+    char *kw[]={"if","else","while","for","return","break","continue",NULL};
     for(int i=0;kw[i];i++)
         if(!strcmp(str,kw[i])) return 1;
     return 0;
@@ -48,13 +55,46 @@ int isSpecialSymbol(char c){
 
 Token getNextToken(){
     Token t;
-    char c,buf[50];
+    char c,buf[100];
     int i;
 
     while((c=fgetc(fp))!=EOF){
         col++;
+
         if(c=='\n'){row++;col=0;continue;}
         if(c==' '||c=='\t') continue;
+
+        if(c=='#'){
+            while((c=fgetc(fp))!='\n' && c!=EOF);
+            row++; col=0;
+            continue;
+        }
+
+        if(c=='"'){
+            while((c=fgetc(fp))!='"' && c!=EOF){
+                if(c=='\n'){row++;col=0;}
+            }
+            continue;
+        }
+
+        if(c=='/'){
+            char n=fgetc(fp);
+            if(n=='/'){
+                while((c=fgetc(fp))!='\n' && c!=EOF);
+                row++; col=0;
+                continue;
+            }
+            if(n=='*'){
+                char p=0;
+                while((c=fgetc(fp))!=EOF){
+                    if(c=='\n'){row++;col=0;}
+                    if(p=='*' && c=='/') break;
+                    p=c;
+                }
+                continue;
+            }
+            ungetc(n,fp);
+        }
 
         t.row=row; t.col=col;
 
@@ -64,7 +104,11 @@ Token getNextToken(){
             buf[i]='\0';
             ungetc(c,fp);
             strcpy(t.lexeme,buf);
-            strcpy(t.type,isKeyword(buf)?"KEYWORD":"IDENTIFIER");
+
+            if(isDatatype(buf)) strcpy(t.type,"DATATYPE");
+            else if(isKeyword(buf)) strcpy(t.type,"KEYWORD");
+            else strcpy(t.type,"IDENTIFIER");
+
             return t;
         }
 
@@ -113,7 +157,7 @@ void addLocal(char *fname,char *name,char *datatype){
 }
 
 int main(){
-    Token t,next;
+    Token t,next,temp;
     char currentType[20]="";
     char currentFunction[50]="";
     int braceLevel=0;
@@ -124,7 +168,7 @@ int main(){
 
     while(strcmp((t=getNextToken()).type,"EOF")){
 
-        if(!strcmp(t.type,"KEYWORD")){
+        if(!strcmp(t.type,"DATATYPE")){
             strcpy(currentType,t.lexeme);
             continue;
         }
@@ -132,27 +176,30 @@ int main(){
         if(!strcmp(t.type,"IDENTIFIER")){
             next=getNextToken();
 
-            if(!strcmp(next.lexeme,"(")){
-                Token temp=next;
+            if(!strcmp(next.lexeme,"(") && strlen(currentType)>0){
                 int param=1;
                 while(param){
                     temp=getNextToken();
                     if(!strcmp(temp.lexeme,")")) param=0;
                 }
-                Token after=getNextToken();
-                if(!strcmp(after.lexeme,"{")){
+                temp=getNextToken();
+                if(!strcmp(temp.lexeme,"{")){
                     addGlobal(t.lexeme,currentType);
                     createFunction(t.lexeme);
                     strcpy(currentFunction,t.lexeme);
                     insideFunction=1;
                     braceLevel=1;
                 }
+                currentType[0]='\0';
             }
             else{
-                if(!insideFunction)
-                    addGlobal(t.lexeme,currentType);
-                else
-                    addLocal(currentFunction,t.lexeme,currentType);
+                if(strlen(currentType)>0){
+                    if(!insideFunction)
+                        addGlobal(t.lexeme,currentType);
+                    else
+                        addLocal(currentFunction,t.lexeme,currentType);
+                    currentType[0]='\0';
+                }
             }
         }
 
